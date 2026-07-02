@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Engine } from 'tetris-engine'
 
+import type { CSSProperties } from 'react'
 import type {
   TetrisEngineCell,
   TetrisEngineShapeName,
@@ -19,6 +20,8 @@ const BOARD_WIDTH = 10
 const BOARD_HEIGHT = 20
 const HIGH_SCORE_KEY = 'tanstack-start-tetris-high-score'
 const PREVIEW_SIZE = 5
+const BOARD_WIDTH_STYLE =
+  'min(calc(100vw - 3rem), calc((100dvh - 7.25rem) / 2), 400px)'
 
 const GAME_STATUS = {
   init: 0,
@@ -316,8 +319,15 @@ function TetrisGame() {
 
   return (
     <main className="min-h-dvh bg-zinc-950 px-4 py-4 text-zinc-100 sm:px-6 lg:h-dvh lg:min-h-0 lg:overflow-hidden lg:px-8 lg:py-3">
-      <section className="mx-auto flex min-h-[calc(100dvh-2rem)] max-w-[44rem] flex-col justify-center gap-4 lg:h-full lg:min-h-0 lg:gap-3">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <section
+        className="mx-auto flex min-h-[calc(100dvh-2rem)] max-w-[calc(var(--tetris-board-width)+20rem)] flex-col justify-center gap-4 lg:h-full lg:min-h-0 lg:gap-3"
+        style={
+          {
+            '--tetris-board-width': BOARD_WIDTH_STYLE,
+          } as CSSProperties
+        }
+      >
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between lg:grid lg:grid-cols-[calc(var(--tetris-board-width)+1rem)_18rem] lg:gap-4">
           <div>
             <p className="text-sm font-semibold text-yellow-200">
               Block Arcade
@@ -339,8 +349,8 @@ function TetrisGame() {
           </div>
         </header>
 
-        <div className="grid items-start gap-4 lg:min-h-0 lg:grid-cols-[25rem_18rem]">
-          <div className="relative mx-auto w-fit rounded-lg bg-zinc-900 p-2 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_70px_rgba(0,0,0,0.48)]">
+        <div className="grid items-start gap-4 lg:min-h-0 lg:grid-cols-[calc(var(--tetris-board-width)+1rem)_18rem]">
+          <div className="relative mx-auto w-fit rounded-lg bg-zinc-900 p-2 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_70px_rgba(0,0,0,0.48)] lg:mx-0">
             <div
               aria-label="俄罗斯方块游戏棋盘"
               className="grid gap-[3px] rounded-md bg-zinc-950 p-2"
@@ -349,7 +359,7 @@ function TetrisGame() {
                 aspectRatio: `${BOARD_WIDTH} / ${BOARD_HEIGHT}`,
                 gridTemplateColumns: `repeat(${BOARD_WIDTH}, minmax(0, 1fr))`,
                 gridTemplateRows: `repeat(${BOARD_HEIGHT}, minmax(0, 1fr))`,
-                width: 'min(92vw, calc((100dvh - 7.25rem) / 2), 400px)',
+                width: BOARD_WIDTH_STYLE,
               }}
             >
               {gameState.body.flatMap((row, y) =>
