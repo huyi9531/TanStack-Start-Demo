@@ -15,7 +15,7 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'TanStack Start Cloudflare 中文演示',
+        title: '贪吃蛇小游戏',
       },
     ],
     links: [
