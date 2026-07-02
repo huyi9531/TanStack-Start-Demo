@@ -7,9 +7,9 @@ const getServerSnapshot = createServerFn({ method: 'GET' }).handler(async () => 
   const now = new Date()
 
   return {
-    environment: 'Cloudflare Workers target',
+    environment: 'Cloudflare Workers 运行环境',
     isoTime: now.toISOString(),
-    message: 'This data was rendered through a TanStack Start server function.',
+    message: '这段数据由 TanStack Start 服务端函数渲染生成。',
   }
 })
 
@@ -18,10 +18,10 @@ const createGreeting = createServerFn({ method: 'POST' })
     name: data.name.trim().slice(0, 40),
   }))
   .handler(async ({ data }) => {
-    const name = data.name || 'friend'
+    const name = data.name || '朋友'
 
     return {
-      greeting: `Hello, ${name}. This response came from the server.`,
+      greeting: `你好，${name}。这条回复来自服务端。`,
       generatedAt: new Date().toISOString(),
     }
   })
@@ -47,7 +47,7 @@ function Home() {
       setResult(nextResult)
       setStatus('idle')
     } catch (error) {
-      console.error('Greeting server function failed', { name, error })
+      console.error('服务端问候函数调用失败', { name, error })
       setStatus('error')
     }
   }
@@ -60,28 +60,28 @@ function Home() {
             TanStack Start + Cloudflare Workers
           </p>
           <h1 className="mt-4 text-4xl font-bold text-white">
-            Minimal full-stack demo
+            极简全栈演示
           </h1>
           <p className="mt-4 max-w-2xl text-lg text-zinc-300">
-            A route loader calls a server function during rendering, and the
-            form below calls a POST server function from the browser.
+            路由加载器会在渲染时调用服务端函数，下方表单则会从浏览器发起一次
+            POST 服务端函数调用。
           </p>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">
           <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
-            <h2 className="text-lg font-semibold text-white">Server snapshot</h2>
+            <h2 className="text-lg font-semibold text-white">服务端快照</h2>
             <dl className="mt-4 space-y-3 text-sm text-zinc-300">
               <div>
-                <dt className="text-zinc-500">Runtime target</dt>
+                <dt className="text-zinc-500">运行目标</dt>
                 <dd>{snapshot.environment}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">Server time</dt>
+                <dt className="text-zinc-500">服务端时间</dt>
                 <dd>{snapshot.isoTime}</dd>
               </div>
               <div>
-                <dt className="text-zinc-500">Message</dt>
+                <dt className="text-zinc-500">消息</dt>
                 <dd>{snapshot.message}</dd>
               </div>
             </dl>
@@ -92,7 +92,7 @@ function Home() {
             onSubmit={handleSubmit}
           >
             <label className="block text-lg font-semibold text-white">
-              Server greeting
+              服务端问候
             </label>
             <div className="mt-4 flex gap-3">
               <input
@@ -106,14 +106,13 @@ function Home() {
                 disabled={status === 'loading'}
                 type="submit"
               >
-                {status === 'loading' ? 'Sending' : 'Send'}
+                {status === 'loading' ? '发送中' : '发送'}
               </button>
             </div>
 
             {status === 'error' ? (
               <p className="mt-4 text-sm text-red-300">
-                The server call failed. Check the browser console and Worker
-                logs for details.
+                服务端调用失败。请查看浏览器控制台和 Worker 日志获取详情。
               </p>
             ) : null}
 
@@ -121,7 +120,7 @@ function Home() {
               <div className="mt-4 rounded-md border border-emerald-900 bg-emerald-950 p-4 text-sm text-emerald-100">
                 <p>{result.greeting}</p>
                 <p className="mt-2 text-emerald-300">
-                  Generated at {result.generatedAt}
+                  生成时间：{result.generatedAt}
                 </p>
               </div>
             ) : null}
