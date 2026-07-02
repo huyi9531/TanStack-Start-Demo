@@ -3,20 +3,22 @@ import { createServerFn, useServerFn } from '@tanstack/react-start'
 import type { FormEvent } from 'react'
 import { useState } from 'react'
 
-const getServerSnapshot = createServerFn({ method: 'GET' }).handler(async () => {
-  const now = new Date()
+import { parseGreetingInput } from '../lib/greeting'
 
-  return {
-    environment: 'Cloudflare Workers 运行环境',
-    isoTime: now.toISOString(),
-    message: '这段数据由 TanStack Start 服务端函数渲染生成。',
-  }
-})
+const getServerSnapshot = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const now = new Date()
+
+    return {
+      environment: 'Cloudflare Workers 运行环境',
+      isoTime: now.toISOString(),
+      message: '这段数据由 TanStack Start 服务端函数渲染生成。',
+    }
+  },
+)
 
 const createGreeting = createServerFn({ method: 'POST' })
-  .validator((data: { name: string }) => ({
-    name: data.name.trim().slice(0, 40),
-  }))
+  .validator(parseGreetingInput)
   .handler(async ({ data }) => {
     const name = data.name || '朋友'
 
@@ -36,7 +38,8 @@ function Home() {
   const greet = useServerFn(createGreeting)
   const [name, setName] = useState('Cloudflare')
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle')
-  const [result, setResult] = useState<Awaited<ReturnType<typeof createGreeting>>>()
+  const [result, setResult] =
+    useState<Awaited<ReturnType<typeof createGreeting>>>()
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -59,9 +62,7 @@ function Home() {
           <p className="text-sm font-medium uppercase tracking-wide text-emerald-300">
             TanStack Start + Cloudflare Workers
           </p>
-          <h1 className="mt-4 text-4xl font-bold text-white">
-            极简全栈演示
-          </h1>
+          <h1 className="mt-4 text-4xl font-bold text-white">极简全栈演示</h1>
           <p className="mt-4 max-w-2xl text-lg text-zinc-300">
             路由加载器会在渲染时调用服务端函数，下方表单则会从浏览器发起一次
             POST 服务端函数调用。
