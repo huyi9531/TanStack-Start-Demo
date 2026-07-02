@@ -1,106 +1,201 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Engine } from 'tetris-engine'
 
-type Cell = {
-  x: number
-  y: number
-}
+import type {
+  TetrisEngineCell,
+  TetrisEngineShapeName,
+  TetrisEngineState,
+} from 'tetris-engine'
 
-type Direction = 'up' | 'right' | 'down' | 'left'
-type GameStatus = 'ready' | 'running' | 'paused' | 'lost' | 'won'
-
-type GameState = {
-  direction: Direction
-  food: Cell
-  nextDirection: Direction
+type GameMetrics = {
+  level: number
+  lines: number
+  pieces: number
   score: number
-  snake: Array<Cell>
-  status: GameStatus
 }
 
-type BoardCell = {
-  isFood: boolean
-  key: string
-  snakeIndex?: number
-}
+const BOARD_WIDTH = 10
+const BOARD_HEIGHT = 20
+const HIGH_SCORE_KEY = 'tanstack-start-tetris-high-score'
+const PREVIEW_SIZE = 5
 
-const BOARD_SIZE = 20
-const HIGH_SCORE_KEY = 'tanstack-start-snake-high-score'
-const START_DIRECTION: Direction = 'right'
-const START_FOOD = { x: 14, y: 10 }
-const START_SNAKE: Array<Cell> = [
-  { x: 9, y: 10 },
-  { x: 8, y: 10 },
-  { x: 7, y: 10 },
+const GAME_STATUS = {
+  init: 0,
+  work: 1,
+  pause: 2,
+  over: 3,
+} as const
+
+const SHAPE_NAMES: Array<TetrisEngineShapeName> = [
+  'IShape',
+  'JShape',
+  'LShape',
+  'OShape',
+  'SShape',
+  'TShape',
+  'ZShape',
 ]
 
-const DIRECTION_DELTAS: Record<Direction, Cell> = {
-  up: { x: 0, y: -1 },
-  right: { x: 1, y: 0 },
-  down: { x: 0, y: 1 },
-  left: { x: -1, y: 0 },
-}
-
-const KEY_DIRECTIONS: Partial<Record<string, Direction>> = {
-  arrowup: 'up',
-  w: 'up',
-  arrowright: 'right',
-  d: 'right',
-  arrowdown: 'down',
-  s: 'down',
-  arrowleft: 'left',
-  a: 'left',
+const SHAPE_COLORS: Record<TetrisEngineShapeName, string> = {
+  IShape: 'bg-cyan-300 shadow-cyan-300/35',
+  JShape: 'bg-blue-400 shadow-blue-400/35',
+  LShape: 'bg-orange-300 shadow-orange-300/35',
+  OShape: 'bg-yellow-300 shadow-yellow-300/35',
+  SShape: 'bg-emerald-300 shadow-emerald-300/35',
+  TShape: 'bg-fuchsia-300 shadow-fuchsia-300/35',
+  ZShape: 'bg-rose-400 shadow-rose-400/35',
 }
 
 export const Route = createFileRoute('/')({
-  component: SnakeGame,
+  head: () => ({
+    meta: [{ title: '俄罗斯方块小游戏' }],
+  }),
+  component: TetrisGame,
 })
 
-function SnakeGame() {
-  const [game, setGame] = useState(createInitialGame)
+function TetrisGame() {
+  const engineRef = useRef<Engine | null>(null)
+  const renderHandleRef = useRef<(state: TetrisEngineState) => void>(() => {})
+  const [gameState, setGameState] = useState(createEmptyGameState)
   const [bestScore, setBestScore] = useState(0)
-  const tickMs = Math.max(72, 150 - Math.floor(game.score / 4) * 10)
-  const boardCells = useMemo(
-    () => createBoardCells(game.snake, game.food),
-    [game.food, game.snake],
+  const metrics = useMemo(
+    () => calculateMetrics(gameState.statistic),
+    [gameState.statistic],
   )
-  const controlsDisabled = game.status === 'lost' || game.status === 'won'
+  const dropMs = getDropInterval(metrics.level)
+  const controlsDisabled = gameState.gameStatus !== GAME_STATUS.work
 
-  const turn = useCallback((direction: Direction) => {
-    setGame((current) => {
-      if (current.status === 'lost' || current.status === 'won') {
-        return current
-      }
+  const syncEngineState = useCallback(() => {
+    const engine = engineRef.current
 
-      if (isOppositeDirection(current.nextDirection, direction)) {
-        return current
-      }
+    if (!engine) {
+      return
+    }
 
-      return {
-        ...current,
-        nextDirection: direction,
-        status: current.status === 'ready' ? 'running' : current.status,
-      }
-    })
+    setGameState(cloneGameState(engine.state))
+  }, [])
+
+  const createEngine = useCallback((startImmediately = false) => {
+    const engine = new Engine(
+      BOARD_WIDTH,
+      BOARD_HEIGHT,
+      (state: TetrisEngineState) => renderHandleRef.current(state),
+    )
+
+    engineRef.current = engine
+
+    if (startImmediately) {
+      engine.start()
+      revealActiveShape(engine)
+    }
+
+    setGameState(cloneGameState(engine.state))
   }, [])
 
   const toggleGame = useCallback(() => {
-    setGame((current) => {
-      if (current.status === 'running') {
-        return { ...current, status: 'paused' }
-      }
+    const engine = engineRef.current
 
-      if (current.status === 'lost' || current.status === 'won') {
-        return { ...createInitialGame(), status: 'running' }
-      }
+    if (!engine) {
+      return
+    }
 
-      return { ...current, status: 'running' }
-    })
-  }, [])
+    if (engine.state.gameStatus === GAME_STATUS.over) {
+      createEngine(true)
+      return
+    }
+
+    if (engine.state.gameStatus === GAME_STATUS.work) {
+      engine.pause()
+      syncEngineState()
+      return
+    }
+
+    engine.start()
+    revealActiveShape(engine)
+    syncEngineState()
+  }, [createEngine, syncEngineState])
 
   const restartGame = useCallback(() => {
-    setGame({ ...createInitialGame(), status: 'running' })
+    createEngine(true)
+  }, [createEngine])
+
+  const moveLeft = useCallback(() => {
+    engineRef.current?.moveLeft()
   }, [])
+
+  const moveRight = useCallback(() => {
+    engineRef.current?.moveRight()
+  }, [])
+
+  const rotate = useCallback(() => {
+    engineRef.current?.rotate()
+  }, [])
+
+  const rotateBack = useCallback(() => {
+    engineRef.current?.rotateBack()
+  }, [])
+
+  const hardDrop = useCallback(() => {
+    const engine = engineRef.current
+
+    if (!engine || engine.state.gameStatus !== GAME_STATUS.work) {
+      return
+    }
+
+    const startPieceCount = engine.state.statistic.countShapesFalled
+
+    for (let step = 0; step < BOARD_HEIGHT + PREVIEW_SIZE; step += 1) {
+      engine.moveDown()
+      const latestState = cloneGameState(engine.state)
+
+      if (
+        latestState.gameStatus === GAME_STATUS.over ||
+        latestState.statistic.countShapesFalled !== startPieceCount
+      ) {
+        break
+      }
+    }
+
+    const settledState = cloneGameState(engine.state)
+
+    if (settledState.gameStatus === GAME_STATUS.work) {
+      revealActiveShape(engine)
+    }
+
+    syncEngineState()
+  }, [syncEngineState])
+
+  const advanceGameTick = useCallback(() => {
+    const engine = engineRef.current
+
+    if (!engine || engine.state.gameStatus !== GAME_STATUS.work) {
+      return
+    }
+
+    const startPieceCount = engine.state.statistic.countShapesFalled
+
+    engine.moveDown()
+    const latestState = cloneGameState(engine.state)
+
+    if (
+      latestState.gameStatus === GAME_STATUS.work &&
+      latestState.statistic.countShapesFalled !== startPieceCount
+    ) {
+      revealActiveShape(engine)
+    }
+
+    syncEngineState()
+  }, [syncEngineState])
+
+  useEffect(() => {
+    renderHandleRef.current = (state) => setGameState(cloneGameState(state))
+    createEngine()
+
+    return () => {
+      engineRef.current = null
+    }
+  }, [createEngine])
 
   useEffect(() => {
     try {
@@ -116,7 +211,7 @@ function SnakeGame() {
         setBestScore(parsedScore)
       }
     } catch (error) {
-      console.warn('读取贪吃蛇最高分失败', {
+      console.warn('读取俄罗斯方块最高分失败', {
         key: HIGH_SCORE_KEY,
         error,
       })
@@ -124,103 +219,153 @@ function SnakeGame() {
   }, [])
 
   useEffect(() => {
-    if (game.score <= bestScore) {
+    if (metrics.score <= bestScore) {
       return
     }
 
-    setBestScore(game.score)
+    setBestScore(metrics.score)
 
     try {
-      window.localStorage.setItem(HIGH_SCORE_KEY, String(game.score))
+      window.localStorage.setItem(HIGH_SCORE_KEY, String(metrics.score))
     } catch (error) {
-      console.warn('保存贪吃蛇最高分失败', {
+      console.warn('保存俄罗斯方块最高分失败', {
         key: HIGH_SCORE_KEY,
-        score: game.score,
+        score: metrics.score,
         error,
       })
     }
-  }, [bestScore, game.score])
+  }, [bestScore, metrics.score])
 
   useEffect(() => {
-    if (game.status !== 'running') {
+    if (gameState.gameStatus !== GAME_STATUS.work) {
       return
     }
 
     const timer = window.setInterval(() => {
-      setGame(advanceGame)
-    }, tickMs)
+      advanceGameTick()
+    }, dropMs)
 
     return () => window.clearInterval(timer)
-  }, [game.status, tickMs])
+  }, [advanceGameTick, dropMs, gameState.gameStatus])
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      const direction = KEY_DIRECTIONS[event.key.toLowerCase()]
+      const key = event.key.toLowerCase()
 
-      if (direction) {
+      if (key === 'arrowleft' || key === 'a') {
         event.preventDefault()
-        turn(direction)
+        moveLeft()
         return
       }
 
-      if (event.key === ' ' || event.key === 'Enter') {
+      if (key === 'arrowright' || key === 'd') {
+        event.preventDefault()
+        moveRight()
+        return
+      }
+
+      if (key === 'arrowdown' || key === 's') {
+        event.preventDefault()
+        advanceGameTick()
+        return
+      }
+
+      if (key === 'arrowup' || key === 'w' || key === 'x') {
+        event.preventDefault()
+        rotate()
+        return
+      }
+
+      if (key === 'z') {
+        event.preventDefault()
+        rotateBack()
+        return
+      }
+
+      if (event.key === ' ') {
+        event.preventDefault()
+        hardDrop()
+        return
+      }
+
+      if (key === 'enter' || key === 'p') {
         event.preventDefault()
         toggleGame()
+        return
+      }
+
+      if (key === 'r') {
+        event.preventDefault()
+        restartGame()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
 
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [toggleGame, turn])
+  }, [
+    advanceGameTick,
+    hardDrop,
+    moveLeft,
+    moveRight,
+    restartGame,
+    rotate,
+    rotateBack,
+    toggleGame,
+  ])
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-5 text-slate-100 sm:px-6 lg:px-8">
-      <section className="mx-auto grid min-h-[calc(100vh-2.5rem)] max-w-6xl items-center gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="space-y-5">
-          <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <main className="min-h-screen bg-zinc-950 px-4 py-4 text-zinc-100 sm:px-6 lg:px-8">
+      <section className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-6xl items-center gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="space-y-4">
+          <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-sm font-semibold text-cyan-300">
-                Snake Arcade
+              <p className="text-sm font-semibold text-yellow-200">
+                Block Arcade
               </p>
               <h1 className="mt-2 text-4xl font-black text-white sm:text-5xl">
-                贪吃蛇小游戏
+                俄罗斯方块小游戏
               </h1>
             </div>
-            <div className={getStatusClassName(game.status)}>
-              {getStatusLabel(game.status)}
+            <div className={getStatusClassName(gameState.gameStatus)}>
+              {getStatusLabel(gameState.gameStatus)}
             </div>
           </header>
 
-          <div className="relative mx-auto w-full max-w-[640px] overflow-hidden rounded-lg border border-cyan-300/20 bg-slate-900 p-2 shadow-2xl shadow-cyan-950/40">
+          <div className="relative mx-auto w-fit rounded-lg border border-white/10 bg-zinc-900 p-2 shadow-2xl shadow-black/50">
             <div
-              aria-label="贪吃蛇游戏棋盘"
-              className="grid aspect-square gap-1 rounded-md bg-slate-950 p-2"
+              aria-label="俄罗斯方块游戏棋盘"
+              className="grid gap-[3px] rounded-md bg-zinc-950 p-2"
               role="img"
               style={{
-                gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
+                aspectRatio: `${BOARD_WIDTH} / ${BOARD_HEIGHT}`,
+                gridTemplateColumns: `repeat(${BOARD_WIDTH}, minmax(0, 1fr))`,
+                gridTemplateRows: `repeat(${BOARD_HEIGHT}, minmax(0, 1fr))`,
+                width: 'min(92vw, calc((100vh - 8rem) / 2), 420px)',
               }}
             >
-              {boardCells.map((cell) => (
-                <div className={getCellClassName(cell)} key={cell.key} />
-              ))}
+              {gameState.body.flatMap((row, y) =>
+                row.map((cell, x) => (
+                  <div className={getCellClassName(cell)} key={`${x}:${y}`} />
+                )),
+              )}
             </div>
 
-            {game.status !== 'running' ? (
-              <div className="absolute inset-0 grid place-items-center bg-slate-950/60 p-6 backdrop-blur-sm">
-                <div className="w-full max-w-xs rounded-lg border border-white/15 bg-slate-950/90 p-5 text-center shadow-xl">
+            {gameState.gameStatus !== GAME_STATUS.work ? (
+              <div className="absolute inset-0 grid place-items-center rounded-lg bg-zinc-950/68 p-6 backdrop-blur-sm">
+                <div className="w-full max-w-xs rounded-lg border border-white/15 bg-zinc-950/95 p-5 text-center shadow-xl">
                   <p className="text-2xl font-bold text-white">
-                    {getOverlayTitle(game.status)}
+                    {getOverlayTitle(gameState.gameStatus)}
                   </p>
-                  <p className="mt-2 text-sm text-slate-300">
-                    当前得分 {game.score}
+                  <p className="mt-2 text-sm text-zinc-300">
+                    当前分数 {metrics.score}
                   </p>
                   <button
-                    className="mt-5 w-full rounded-md bg-cyan-300 px-4 py-3 font-bold text-slate-950 transition hover:bg-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-100"
+                    className="mt-5 w-full rounded-md bg-yellow-300 px-4 py-3 font-bold text-zinc-950 transition hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-yellow-100"
                     onClick={toggleGame}
                     type="button"
                   >
-                    {getPrimaryActionLabel(game.status)}
+                    {getPrimaryActionLabel(gameState.gameStatus)}
                   </button>
                 </div>
               </div>
@@ -228,38 +373,58 @@ function SnakeGame() {
           </div>
         </div>
 
-        <aside className="space-y-4 rounded-lg border border-slate-800 bg-slate-900/80 p-4 shadow-xl shadow-slate-950/40">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
-              <p className="text-xs text-slate-400">得分</p>
-              <p className="mt-1 text-2xl font-black text-white">
-                {game.score}
+        <aside className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <MetricCard label="分数" tone="text-white" value={metrics.score} />
+            <MetricCard label="最佳" tone="text-yellow-200" value={bestScore} />
+            <MetricCard
+              label="消行"
+              tone="text-emerald-200"
+              value={metrics.lines}
+            />
+            <MetricCard
+              label="等级"
+              tone="text-fuchsia-200"
+              value={metrics.level}
+            />
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-zinc-900 p-4 shadow-xl shadow-black/35">
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm font-semibold text-zinc-300">下一块</p>
+              <p className="text-sm font-semibold text-cyan-200">
+                {metrics.pieces}
               </p>
             </div>
-            <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
-              <p className="text-xs text-slate-400">最佳</p>
-              <p className="mt-1 text-2xl font-black text-amber-200">
-                {bestScore}
-              </p>
-            </div>
-            <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
-              <p className="text-xs text-slate-400">速度</p>
-              <p className="mt-1 text-2xl font-black text-rose-200">
-                {Math.round(1000 / tickMs)}
-              </p>
+            <div
+              aria-label="下一块预览"
+              className="mx-auto mt-4 grid h-28 w-28 grid-cols-5 grid-rows-5 gap-1 rounded-md bg-zinc-950 p-2"
+              role="img"
+            >
+              {createPreviewCells(gameState.nextShape.body).map(
+                (cell, index) => (
+                  <div
+                    className={getPreviewCellClassName(
+                      cell,
+                      gameState.nextShape.name,
+                    )}
+                    key={index}
+                  />
+                ),
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <button
-              className="rounded-md bg-emerald-300 px-4 py-3 font-bold text-slate-950 transition hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+              className="rounded-md bg-emerald-300 px-4 py-3 font-bold text-zinc-950 transition hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-100"
               onClick={toggleGame}
               type="button"
             >
-              {getPrimaryActionLabel(game.status)}
+              {getPrimaryActionLabel(gameState.gameStatus)}
             </button>
             <button
-              className="rounded-md border border-slate-600 bg-slate-950 px-4 py-3 font-bold text-slate-100 transition hover:border-cyan-300 hover:text-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+              className="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-3 font-bold text-zinc-100 transition hover:border-yellow-200 hover:text-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-100"
               onClick={restartGame}
               type="button"
             >
@@ -267,41 +432,57 @@ function SnakeGame() {
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-            <div />
+          <div className="grid grid-cols-3 gap-2 rounded-lg border border-white/10 bg-zinc-900 p-3 shadow-xl shadow-black/35">
             <button
-              aria-label="上"
+              aria-label="逆时针旋转"
               className={getControlButtonClassName(controlsDisabled)}
               disabled={controlsDisabled}
-              onClick={() => turn('up')}
+              onClick={rotateBack}
               type="button"
             >
-              ↑
+              ↺
             </button>
-            <div />
             <button
-              aria-label="左"
+              aria-label="旋转"
               className={getControlButtonClassName(controlsDisabled)}
               disabled={controlsDisabled}
-              onClick={() => turn('left')}
+              onClick={rotate}
+              type="button"
+            >
+              ↻
+            </button>
+            <button
+              aria-label="快速落下"
+              className={getControlButtonClassName(controlsDisabled)}
+              disabled={controlsDisabled}
+              onClick={hardDrop}
+              type="button"
+            >
+              ⇣
+            </button>
+            <button
+              aria-label="左移"
+              className={getControlButtonClassName(controlsDisabled)}
+              disabled={controlsDisabled}
+              onClick={moveLeft}
               type="button"
             >
               ←
             </button>
             <button
-              aria-label="下"
+              aria-label="下移"
               className={getControlButtonClassName(controlsDisabled)}
               disabled={controlsDisabled}
-              onClick={() => turn('down')}
+              onClick={advanceGameTick}
               type="button"
             >
               ↓
             </button>
             <button
-              aria-label="右"
+              aria-label="右移"
               className={getControlButtonClassName(controlsDisabled)}
               disabled={controlsDisabled}
-              onClick={() => turn('right')}
+              onClick={moveRight}
               type="button"
             >
               →
@@ -313,203 +494,206 @@ function SnakeGame() {
   )
 }
 
-function createInitialGame(): GameState {
-  return {
-    direction: START_DIRECTION,
-    food: START_FOOD,
-    nextDirection: START_DIRECTION,
-    score: 0,
-    snake: START_SNAKE.map((cell) => ({ ...cell })),
-    status: 'ready',
-  }
-}
-
-function advanceGame(current: GameState): GameState {
-  if (current.status !== 'running') {
-    return current
-  }
-
-  const direction = current.nextDirection
-  const head = current.snake[0]
-  const delta = DIRECTION_DELTAS[direction]
-  const nextHead = {
-    x: head.x + delta.x,
-    y: head.y + delta.y,
-  }
-  const ateFood = isSameCell(nextHead, current.food)
-  const bodyToCheck = ateFood ? current.snake : current.snake.slice(0, -1)
-
-  if (
-    isOutsideBoard(nextHead) ||
-    bodyToCheck.some((cell) => isSameCell(cell, nextHead))
-  ) {
-    return {
-      ...current,
-      direction,
-      nextDirection: direction,
-      status: 'lost',
-    }
-  }
-
-  const nextSnake = [
-    nextHead,
-    ...(ateFood ? current.snake : current.snake.slice(0, -1)),
-  ]
-
-  if (!ateFood) {
-    return {
-      ...current,
-      direction,
-      nextDirection: direction,
-      snake: nextSnake,
-    }
-  }
-
-  const nextFood = createFood(nextSnake)
-
-  return {
-    ...current,
-    direction,
-    food: nextFood ?? current.food,
-    nextDirection: direction,
-    score: current.score + 1,
-    snake: nextSnake,
-    status: nextFood ? 'running' : 'won',
-  }
-}
-
-function createFood(snake: Array<Cell>) {
-  const occupiedCells = new Set(snake.map(cellKey))
-  const emptyCells: Array<Cell> = []
-
-  for (let y = 0; y < BOARD_SIZE; y += 1) {
-    for (let x = 0; x < BOARD_SIZE; x += 1) {
-      const cell = { x, y }
-
-      if (!occupiedCells.has(cellKey(cell))) {
-        emptyCells.push(cell)
-      }
-    }
-  }
-
-  if (emptyCells.length === 0) {
-    return undefined
-  }
-
-  return emptyCells[Math.floor(Math.random() * emptyCells.length)]
-}
-
-function createBoardCells(snake: Array<Cell>, food: Cell) {
-  const snakeIndexes = new Map(
-    snake.map((cell, index) => [cellKey(cell), index]),
-  )
-
-  return Array.from({ length: BOARD_SIZE * BOARD_SIZE }, (_, index) => {
-    const cell = {
-      x: index % BOARD_SIZE,
-      y: Math.floor(index / BOARD_SIZE),
-    }
-
-    return {
-      isFood: isSameCell(cell, food),
-      key: cellKey(cell),
-      snakeIndex: snakeIndexes.get(cellKey(cell)),
-    } satisfies BoardCell
-  })
-}
-
-function cellKey(cell: Cell) {
-  return `${cell.x}:${cell.y}`
-}
-
-function isOutsideBoard(cell: Cell) {
+function MetricCard({
+  label,
+  tone,
+  value,
+}: {
+  label: string
+  tone: string
+  value: number
+}) {
   return (
-    cell.x < 0 || cell.x >= BOARD_SIZE || cell.y < 0 || cell.y >= BOARD_SIZE
+    <div className="rounded-lg border border-white/10 bg-zinc-900 p-3 shadow-lg shadow-black/25">
+      <p className="text-xs text-zinc-400">{label}</p>
+      <p className={`mt-1 text-2xl font-black ${tone}`}>{value}</p>
+    </div>
   )
 }
 
-function isSameCell(first: Cell, second: Cell) {
-  return first.x === second.x && first.y === second.y
+function createEmptyGameState(): TetrisEngineState {
+  return {
+    body: Array.from({ length: BOARD_HEIGHT }, () =>
+      Array.from({ length: BOARD_WIDTH }, () => ({
+        cssClasses: [null, null, null, null],
+        val: 0,
+      })),
+    ),
+    gameStatus: GAME_STATUS.init,
+    nextShape: {
+      body: null,
+      name: null,
+    },
+    shapeName: null,
+    statistic: {
+      countDoubleLinesReduced: 0,
+      countLinesReduced: 0,
+      countQuadrupleLinesReduced: 0,
+      countShapesFalled: 0,
+      countShapesFalledByType: {},
+      countTrippleLinesReduced: 0,
+    },
+  }
 }
 
-function isOppositeDirection(first: Direction, second: Direction) {
-  return (
-    (first === 'up' && second === 'down') ||
-    (first === 'down' && second === 'up') ||
-    (first === 'left' && second === 'right') ||
-    (first === 'right' && second === 'left')
+function revealActiveShape(engine: Engine) {
+  for (let step = 0; step < PREVIEW_SIZE + 2; step += 1) {
+    if (
+      engine.state.gameStatus !== GAME_STATUS.work ||
+      hasVisibleActiveShape(engine.state)
+    ) {
+      return
+    }
+
+    engine.moveDown()
+  }
+}
+
+function hasVisibleActiveShape(state: TetrisEngineState) {
+  return state.body.some((row) => row.some((cell) => cell.val === 1))
+}
+
+function cloneGameState(state: TetrisEngineState): TetrisEngineState {
+  return {
+    body: state.body.map((row) =>
+      row.map((cell) => ({
+        cssClasses: [...cell.cssClasses],
+        val: cell.val,
+      })),
+    ),
+    gameStatus: state.gameStatus,
+    nextShape: {
+      body: state.nextShape.body
+        ? state.nextShape.body.map((row) => [...row])
+        : null,
+      name: state.nextShape.name,
+    },
+    shapeName: state.shapeName,
+    statistic: {
+      ...state.statistic,
+      countShapesFalledByType: {
+        ...state.statistic.countShapesFalledByType,
+      },
+    },
+  }
+}
+
+function calculateMetrics(
+  statistic: TetrisEngineState['statistic'],
+): GameMetrics {
+  const doubleLines = statistic.countDoubleLinesReduced * 2
+  const trippleLines = statistic.countTrippleLinesReduced * 3
+  const quadrupleLines = statistic.countQuadrupleLinesReduced * 4
+  const singleLines = Math.max(
+    0,
+    statistic.countLinesReduced - doubleLines - trippleLines - quadrupleLines,
   )
+  const lineScore =
+    singleLines * 100 +
+    statistic.countDoubleLinesReduced * 300 +
+    statistic.countTrippleLinesReduced * 500 +
+    statistic.countQuadrupleLinesReduced * 800
+  const pieces = Math.max(0, statistic.countShapesFalled - 1)
+  const level = Math.floor(statistic.countLinesReduced / 8) + 1
+
+  return {
+    level,
+    lines: statistic.countLinesReduced,
+    pieces,
+    score: lineScore + pieces * 10,
+  }
 }
 
-function getStatusLabel(status: GameStatus) {
-  const labels: Record<GameStatus, string> = {
-    ready: '准备',
-    running: '进行中',
-    paused: '暂停',
-    lost: '结束',
-    won: '通关',
+function getDropInterval(level: number) {
+  return Math.max(120, 760 - (level - 1) * 58)
+}
+
+function createPreviewCells(body: TetrisEngineState['nextShape']['body']) {
+  if (!body) {
+    return Array.from({ length: PREVIEW_SIZE * PREVIEW_SIZE }, () => 0)
+  }
+
+  return body.flat()
+}
+
+function getShapeName(cell: TetrisEngineCell) {
+  return SHAPE_NAMES.find((shapeName) => cell.cssClasses.includes(shapeName))
+}
+
+function getCellClassName(cell: TetrisEngineCell) {
+  const shapeName = getShapeName(cell)
+
+  if (!shapeName) {
+    return 'rounded-sm border border-white/[0.03] bg-zinc-900/80'
+  }
+
+  const isLocked = cell.val === 2
+  const lockedClassName = isLocked ? 'brightness-90 saturate-75' : ''
+
+  return `rounded-sm border border-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.42),0_0_12px] ${SHAPE_COLORS[shapeName]} ${lockedClassName}`
+}
+
+function getPreviewCellClassName(
+  cell: number,
+  shapeName: TetrisEngineShapeName | null,
+) {
+  if (!cell || !shapeName) {
+    return 'rounded-sm bg-zinc-900/70'
+  }
+
+  return `rounded-sm border border-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.42),0_0_10px] ${SHAPE_COLORS[shapeName]}`
+}
+
+function getStatusLabel(status: TetrisEngineState['gameStatus']) {
+  const labels: Record<TetrisEngineState['gameStatus'], string> = {
+    [GAME_STATUS.init]: '准备',
+    [GAME_STATUS.work]: '进行中',
+    [GAME_STATUS.pause]: '暂停',
+    [GAME_STATUS.over]: '结束',
   }
 
   return labels[status]
 }
 
-function getOverlayTitle(status: GameStatus) {
-  const titles: Record<GameStatus, string> = {
-    ready: '准备开始',
-    running: '进行中',
-    paused: '已暂停',
-    lost: '撞上了',
-    won: '通关成功',
+function getOverlayTitle(status: TetrisEngineState['gameStatus']) {
+  const titles: Record<TetrisEngineState['gameStatus'], string> = {
+    [GAME_STATUS.init]: '准备落块',
+    [GAME_STATUS.work]: '进行中',
+    [GAME_STATUS.pause]: '已暂停',
+    [GAME_STATUS.over]: '堆到顶部',
   }
 
   return titles[status]
 }
 
-function getPrimaryActionLabel(status: GameStatus) {
-  const labels: Record<GameStatus, string> = {
-    ready: '开始',
-    running: '暂停',
-    paused: '继续',
-    lost: '再来',
-    won: '再来',
+function getPrimaryActionLabel(status: TetrisEngineState['gameStatus']) {
+  const labels: Record<TetrisEngineState['gameStatus'], string> = {
+    [GAME_STATUS.init]: '开始',
+    [GAME_STATUS.work]: '暂停',
+    [GAME_STATUS.pause]: '继续',
+    [GAME_STATUS.over]: '再来',
   }
 
   return labels[status]
 }
 
-function getStatusClassName(status: GameStatus) {
+function getStatusClassName(status: TetrisEngineState['gameStatus']) {
   const tone =
-    status === 'running'
+    status === GAME_STATUS.work
       ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100'
-      : status === 'lost'
+      : status === GAME_STATUS.over
         ? 'border-rose-300/40 bg-rose-300/10 text-rose-100'
-        : status === 'won'
-          ? 'border-amber-300/40 bg-amber-300/10 text-amber-100'
+        : status === GAME_STATUS.pause
+          ? 'border-yellow-300/40 bg-yellow-300/10 text-yellow-100'
           : 'border-cyan-300/30 bg-cyan-300/10 text-cyan-100'
 
   return `w-fit rounded-md border px-3 py-2 text-sm font-bold ${tone}`
 }
 
-function getCellClassName(cell: BoardCell) {
-  if (cell.isFood) {
-    return 'rounded-full bg-rose-400 shadow-[0_0_18px_rgba(251,113,133,0.8)]'
-  }
-
-  if (cell.snakeIndex === 0) {
-    return 'rounded-sm bg-emerald-200 shadow-[0_0_16px_rgba(110,231,183,0.75)]'
-  }
-
-  if (typeof cell.snakeIndex === 'number') {
-    return 'rounded-sm bg-emerald-500'
-  }
-
-  return 'rounded-sm bg-slate-900/80'
-}
-
 function getControlButtonClassName(disabled: boolean) {
   const disabledClassName = disabled
     ? 'cursor-not-allowed opacity-45'
-    : 'hover:border-cyan-300 hover:bg-slate-800 hover:text-cyan-100'
+    : 'hover:border-yellow-200 hover:bg-zinc-800 hover:text-yellow-100'
 
-  return `aspect-square rounded-md border border-slate-700 bg-slate-950 text-2xl font-black text-white transition focus:outline-none focus:ring-2 focus:ring-cyan-200 ${disabledClassName}`
+  return `aspect-square rounded-md border border-zinc-700 bg-zinc-950 text-2xl font-black text-white transition focus:outline-none focus:ring-2 focus:ring-yellow-100 ${disabledClassName}`
 }

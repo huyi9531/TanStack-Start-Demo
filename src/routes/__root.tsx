@@ -15,7 +15,7 @@ export const Route = createRootRoute({
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: '贪吃蛇小游戏',
+        title: '俄罗斯方块小游戏',
       },
     ],
     links: [
