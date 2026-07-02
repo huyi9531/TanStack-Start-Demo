@@ -315,8 +315,8 @@ function TetrisGame() {
   ])
 
   return (
-    <main className="min-h-screen bg-zinc-950 px-4 py-4 text-zinc-100 sm:px-6 lg:px-8">
-      <section className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-6xl items-center gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+    <main className="min-h-dvh bg-zinc-950 px-4 py-4 text-zinc-100 sm:px-6 lg:h-dvh lg:min-h-0 lg:overflow-hidden lg:px-8 lg:py-3">
+      <section className="mx-auto grid min-h-[calc(100dvh-2rem)] max-w-6xl items-center gap-6 lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="space-y-4">
           <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -341,7 +341,7 @@ function TetrisGame() {
                 aspectRatio: `${BOARD_WIDTH} / ${BOARD_HEIGHT}`,
                 gridTemplateColumns: `repeat(${BOARD_WIDTH}, minmax(0, 1fr))`,
                 gridTemplateRows: `repeat(${BOARD_HEIGHT}, minmax(0, 1fr))`,
-                width: 'min(92vw, calc((100vh - 8rem) / 2), 420px)',
+                width: 'min(92vw, calc((100dvh - 8.75rem) / 2), 420px)',
               }}
             >
               {gameState.body.flatMap((row, y) =>
