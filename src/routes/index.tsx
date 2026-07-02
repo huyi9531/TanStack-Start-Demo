@@ -316,23 +316,31 @@ function TetrisGame() {
 
   return (
     <main className="min-h-dvh bg-zinc-950 px-4 py-4 text-zinc-100 sm:px-6 lg:h-dvh lg:min-h-0 lg:overflow-hidden lg:px-8 lg:py-3">
-      <section className="mx-auto grid min-h-[calc(100dvh-2rem)] max-w-6xl items-center gap-6 lg:h-full lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="space-y-4">
-          <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-yellow-200">
-                Block Arcade
+      <section className="mx-auto flex min-h-[calc(100dvh-2rem)] max-w-[44rem] flex-col justify-center gap-4 lg:h-full lg:min-h-0 lg:gap-3">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-yellow-200">
+              Block Arcade
+            </p>
+            <h1 className="mt-1 text-balance text-3xl font-black text-white sm:text-4xl">
+              俄罗斯方块小游戏
+            </h1>
+          </div>
+          <div className="flex items-end justify-between gap-3 sm:justify-end">
+            <div className="text-right">
+              <p className="text-xs text-zinc-500">速度</p>
+              <p className="tabular-nums text-sm font-bold text-zinc-200">
+                {Math.round(1000 / dropMs)}
               </p>
-              <h1 className="mt-2 text-4xl font-black text-white sm:text-5xl">
-                俄罗斯方块小游戏
-              </h1>
             </div>
             <div className={getStatusClassName(gameState.gameStatus)}>
               {getStatusLabel(gameState.gameStatus)}
             </div>
-          </header>
+          </div>
+        </header>
 
-          <div className="relative mx-auto w-fit rounded-lg border border-white/10 bg-zinc-900 p-2 shadow-2xl shadow-black/50">
+        <div className="grid items-start gap-4 lg:min-h-0 lg:grid-cols-[25rem_18rem]">
+          <div className="relative mx-auto w-fit rounded-lg bg-zinc-900 p-2 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_24px_70px_rgba(0,0,0,0.48)]">
             <div
               aria-label="俄罗斯方块游戏棋盘"
               className="grid gap-[3px] rounded-md bg-zinc-950 p-2"
@@ -341,7 +349,7 @@ function TetrisGame() {
                 aspectRatio: `${BOARD_WIDTH} / ${BOARD_HEIGHT}`,
                 gridTemplateColumns: `repeat(${BOARD_WIDTH}, minmax(0, 1fr))`,
                 gridTemplateRows: `repeat(${BOARD_HEIGHT}, minmax(0, 1fr))`,
-                width: 'min(92vw, calc((100dvh - 8.75rem) / 2), 420px)',
+                width: 'min(92vw, calc((100dvh - 7.25rem) / 2), 400px)',
               }}
             >
               {gameState.body.flatMap((row, y) =>
@@ -357,11 +365,11 @@ function TetrisGame() {
                   <p className="text-2xl font-bold text-white">
                     {getOverlayTitle(gameState.gameStatus)}
                   </p>
-                  <p className="mt-2 text-sm text-zinc-300">
+                  <p className="mt-2 text-sm text-zinc-300 tabular-nums">
                     当前分数 {metrics.score}
                   </p>
                   <button
-                    className="mt-5 w-full rounded-md bg-yellow-300 px-4 py-3 font-bold text-zinc-950 transition hover:bg-yellow-200 focus:outline-none focus:ring-2 focus:ring-yellow-100"
+                    className="mt-5 w-full rounded-md bg-yellow-300 px-4 py-3 font-bold text-zinc-950 transition-[background-color,scale] duration-150 ease-out hover:bg-yellow-200 active:scale-[0.96] focus:outline-none focus:ring-2 focus:ring-yellow-100"
                     onClick={toggleGame}
                     type="button"
                   >
@@ -371,142 +379,162 @@ function TetrisGame() {
               </div>
             ) : null}
           </div>
+
+          <aside className="grid gap-3 lg:self-start">
+            <div className="space-y-2">
+              <MetricCard
+                featured
+                label="分数"
+                tone="text-white"
+                value={metrics.score}
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <MetricCard
+                  label="最佳"
+                  tone="text-yellow-200"
+                  value={bestScore}
+                />
+                <MetricCard
+                  label="消行"
+                  tone="text-emerald-200"
+                  value={metrics.lines}
+                />
+                <MetricCard
+                  label="等级"
+                  tone="text-fuchsia-200"
+                  value={metrics.level}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-zinc-900 p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_14px_38px_rgba(0,0,0,0.32)]">
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm font-semibold text-zinc-300">下一块</p>
+                <p className="tabular-nums text-sm font-semibold text-cyan-200">
+                  {metrics.pieces}
+                </p>
+              </div>
+              <div
+                aria-label="下一块预览"
+                className="mx-auto mt-3 grid h-24 w-24 grid-cols-5 grid-rows-5 gap-1 rounded-md bg-zinc-950 p-2"
+                role="img"
+              >
+                {createPreviewCells(gameState.nextShape.body).map(
+                  (cell, index) => (
+                    <div
+                      className={getPreviewCellClassName(
+                        cell,
+                        gameState.nextShape.name,
+                      )}
+                      key={index}
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                className="rounded-md bg-emerald-300 px-4 py-3 font-bold text-zinc-950 transition-[background-color,scale] duration-150 ease-out hover:bg-emerald-200 active:scale-[0.96] focus:outline-none focus:ring-2 focus:ring-emerald-100"
+                onClick={toggleGame}
+                type="button"
+              >
+                {getPrimaryActionLabel(gameState.gameStatus)}
+              </button>
+              <button
+                className="rounded-md bg-zinc-900 px-4 py-3 font-bold text-zinc-100 shadow-[0_0_0_1px_rgba(255,255,255,0.1)] transition-[box-shadow,color,scale] duration-150 ease-out hover:text-yellow-100 hover:shadow-[0_0_0_1px_rgba(254,240,138,0.65)] active:scale-[0.96] focus:outline-none focus:ring-2 focus:ring-yellow-100"
+                onClick={restartGame}
+                type="button"
+              >
+                重开
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 rounded-lg bg-zinc-900 p-2 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_14px_38px_rgba(0,0,0,0.32)]">
+              <button
+                aria-label="逆时针旋转"
+                className={getControlButtonClassName(controlsDisabled)}
+                disabled={controlsDisabled}
+                onClick={rotateBack}
+                type="button"
+              >
+                ↺
+              </button>
+              <button
+                aria-label="旋转"
+                className={getControlButtonClassName(controlsDisabled)}
+                disabled={controlsDisabled}
+                onClick={rotate}
+                type="button"
+              >
+                ↻
+              </button>
+              <button
+                aria-label="快速落下"
+                className={getControlButtonClassName(controlsDisabled)}
+                disabled={controlsDisabled}
+                onClick={hardDrop}
+                type="button"
+              >
+                ⇣
+              </button>
+              <button
+                aria-label="左移"
+                className={getControlButtonClassName(controlsDisabled)}
+                disabled={controlsDisabled}
+                onClick={moveLeft}
+                type="button"
+              >
+                ←
+              </button>
+              <button
+                aria-label="下移"
+                className={getControlButtonClassName(controlsDisabled)}
+                disabled={controlsDisabled}
+                onClick={advanceGameTick}
+                type="button"
+              >
+                ↓
+              </button>
+              <button
+                aria-label="右移"
+                className={getControlButtonClassName(controlsDisabled)}
+                disabled={controlsDisabled}
+                onClick={moveRight}
+                type="button"
+              >
+                →
+              </button>
+            </div>
+          </aside>
         </div>
-
-        <aside className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <MetricCard label="分数" tone="text-white" value={metrics.score} />
-            <MetricCard label="最佳" tone="text-yellow-200" value={bestScore} />
-            <MetricCard
-              label="消行"
-              tone="text-emerald-200"
-              value={metrics.lines}
-            />
-            <MetricCard
-              label="等级"
-              tone="text-fuchsia-200"
-              value={metrics.level}
-            />
-          </div>
-
-          <div className="rounded-lg border border-white/10 bg-zinc-900 p-4 shadow-xl shadow-black/35">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-sm font-semibold text-zinc-300">下一块</p>
-              <p className="text-sm font-semibold text-cyan-200">
-                {metrics.pieces}
-              </p>
-            </div>
-            <div
-              aria-label="下一块预览"
-              className="mx-auto mt-4 grid h-28 w-28 grid-cols-5 grid-rows-5 gap-1 rounded-md bg-zinc-950 p-2"
-              role="img"
-            >
-              {createPreviewCells(gameState.nextShape.body).map(
-                (cell, index) => (
-                  <div
-                    className={getPreviewCellClassName(
-                      cell,
-                      gameState.nextShape.name,
-                    )}
-                    key={index}
-                  />
-                ),
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              className="rounded-md bg-emerald-300 px-4 py-3 font-bold text-zinc-950 transition hover:bg-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-100"
-              onClick={toggleGame}
-              type="button"
-            >
-              {getPrimaryActionLabel(gameState.gameStatus)}
-            </button>
-            <button
-              className="rounded-md border border-zinc-700 bg-zinc-900 px-4 py-3 font-bold text-zinc-100 transition hover:border-yellow-200 hover:text-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-100"
-              onClick={restartGame}
-              type="button"
-            >
-              重开
-            </button>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 rounded-lg border border-white/10 bg-zinc-900 p-3 shadow-xl shadow-black/35">
-            <button
-              aria-label="逆时针旋转"
-              className={getControlButtonClassName(controlsDisabled)}
-              disabled={controlsDisabled}
-              onClick={rotateBack}
-              type="button"
-            >
-              ↺
-            </button>
-            <button
-              aria-label="旋转"
-              className={getControlButtonClassName(controlsDisabled)}
-              disabled={controlsDisabled}
-              onClick={rotate}
-              type="button"
-            >
-              ↻
-            </button>
-            <button
-              aria-label="快速落下"
-              className={getControlButtonClassName(controlsDisabled)}
-              disabled={controlsDisabled}
-              onClick={hardDrop}
-              type="button"
-            >
-              ⇣
-            </button>
-            <button
-              aria-label="左移"
-              className={getControlButtonClassName(controlsDisabled)}
-              disabled={controlsDisabled}
-              onClick={moveLeft}
-              type="button"
-            >
-              ←
-            </button>
-            <button
-              aria-label="下移"
-              className={getControlButtonClassName(controlsDisabled)}
-              disabled={controlsDisabled}
-              onClick={advanceGameTick}
-              type="button"
-            >
-              ↓
-            </button>
-            <button
-              aria-label="右移"
-              className={getControlButtonClassName(controlsDisabled)}
-              disabled={controlsDisabled}
-              onClick={moveRight}
-              type="button"
-            >
-              →
-            </button>
-          </div>
-        </aside>
       </section>
     </main>
   )
 }
 
 function MetricCard({
+  featured = false,
   label,
   tone,
   value,
 }: {
+  featured?: boolean
   label: string
   tone: string
   value: number
 }) {
+  const wrapperClassName = featured
+    ? 'rounded-lg bg-zinc-900 p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_14px_38px_rgba(0,0,0,0.32)]'
+    : 'rounded-lg bg-zinc-900 p-2 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]'
+  const valueClassName = featured
+    ? `mt-1 text-4xl font-black tabular-nums ${tone}`
+    : `mt-1 text-xl font-black tabular-nums ${tone}`
+
   return (
-    <div className="rounded-lg border border-white/10 bg-zinc-900 p-3 shadow-lg shadow-black/25">
+    <div className={wrapperClassName}>
       <p className="text-xs text-zinc-400">{label}</p>
-      <p className={`mt-1 text-2xl font-black ${tone}`}>{value}</p>
+      <p className={valueClassName}>{value}</p>
     </div>
   )
 }
@@ -693,7 +721,7 @@ function getStatusClassName(status: TetrisEngineState['gameStatus']) {
 function getControlButtonClassName(disabled: boolean) {
   const disabledClassName = disabled
     ? 'cursor-not-allowed opacity-45'
-    : 'hover:border-yellow-200 hover:bg-zinc-800 hover:text-yellow-100'
+    : 'hover:bg-zinc-800 hover:text-yellow-100 hover:shadow-[0_0_0_1px_rgba(254,240,138,0.62)] active:scale-[0.96]'
 
-  return `aspect-square rounded-md border border-zinc-700 bg-zinc-950 text-2xl font-black text-white transition focus:outline-none focus:ring-2 focus:ring-yellow-100 ${disabledClassName}`
+  return `h-12 rounded-md bg-zinc-950 text-2xl font-black text-white shadow-[0_0_0_1px_rgba(255,255,255,0.1)] transition-[background-color,box-shadow,color,scale] duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-yellow-100 ${disabledClassName}`
 }
